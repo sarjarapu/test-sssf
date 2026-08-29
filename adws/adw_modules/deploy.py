@@ -115,20 +115,39 @@ def _vercel_status(repo: str, sha: str) -> tuple[str, str, str]:
     return "", "", out.strip()
 
 
+def _deployment_url(repo: str, sha: str) -> str:
+    """The live deployment URL for `sha` from the GitHub deployments API, "" if none.
+
+    The "Vercel" commit status only carries the build-inspector link; the actual
+    `*.vercel.app` URL is the deployment status `environment_url`.
+    """
+    rc, out, _ = _run(
+        ["gh", "api", f"repos/{repo}/deployments?sha={sha}&per_page=1",
+         "--jq", ".[0].id"], timeout=20)
+    dep_id = out.strip()
+    if rc != 0 or not dep_id or dep_id == "null":
+        return ""
+    rc, out, _ = _run(
+        ["gh", "api", f"repos/{repo}/deployments/{dep_id}/statuses?per_page=1",
+         "--jq", ".[0].environment_url // .[0].target_url // \"\""], timeout=20)
+    return out.strip() if rc == 0 and out.strip() != "null" else ""
+
+
 def await_vercel(repo: str, sha: str, timeout_seconds: int = 600, poll_seconds: int = 10,
                  emit=lambda _text: None) -> tuple[str, str, str]:
     """Poll the "Vercel" commit status until it reaches a terminal state or times out.
 
-    Returns (state, target_url, raw_json). `state` is "" when the status was
-    never posted, one of success|failure|error when terminal, else the last
-    non-terminal state seen before the deadline.
+    Returns (state, url, raw_json) — `url` is the live deployment URL when the
+    deployments API has one, else the build-inspector link. `state` is "" when
+    the status was never posted, one of success|failure|error when terminal,
+    else the last non-terminal state seen before the deadline.
     """
     deadline = time.monotonic() + timeout_seconds
     state, target_url, raw = "", "", ""
     while time.monotonic() < deadline:
         state, target_url, raw = _vercel_status(repo, sha)
         if state in _TERMINAL_STATES:
-            return state, target_url, raw
+            return state, _deployment_url(repo, sha) or target_url, raw
         emit(f"{_VERCEL_CONTEXT} {state or 'not posted yet'} — waiting {poll_seconds}s")
         time.sleep(poll_seconds)
     return state, target_url, raw
