@@ -1,0 +1,20 @@
+.version-badge {
+  position: fixed;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 100;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-decoration: none;
+  white-space: nowrap;
+  opacity: 0.6;
+}
+
+.version-badge:hover {
+  opacity: 1;
+  color: var(--text);
+}
