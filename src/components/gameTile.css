@@ -1,0 +1,42 @@
+.game-tile {
+  list-style: none;
+}
+
+.game-tile__link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  height: 100%;
+  min-height: 160px;
+  padding: 1.25rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 2px solid var(--surface-2);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.game-tile__link:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.game-tile__thumb {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.game-tile__title {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.game-tile__desc {
+  color: var(--text-dim);
+}
+
+.game-tile__score {
+  margin-top: auto;
+  font-weight: 600;
+  color: var(--accent-2);
+}

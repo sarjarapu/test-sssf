@@ -1,0 +1,47 @@
+.ttt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ttt__tally {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.ttt__board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--surface-2);
+  padding: 8px;
+  border-radius: var(--radius);
+}
+
+.ttt__cell {
+  width: 88px;
+  height: 88px;
+  min-width: 72px;
+  min-height: 72px;
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ttt__cell:disabled {
+  opacity: 1;
+}
+
+.ttt__cell.winning {
+  background: var(--win);
+  color: #08221f;
+  border-color: #08221f;
+  box-shadow: inset 0 0 0 3px #08221f;
+}

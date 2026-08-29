@@ -139,9 +139,9 @@ def test(run) -> QualityCheckResult:
     """Run the project's test suite. The highest-value block to wire up first."""
     return _run(QualityCheckSpec(
         name="test",
-        area="backend",
+        area="frontend",
         operation="build",
-        argv=_placeholder("test"),        # e.g. ["bun", "test"] or ["uv", "run", "pytest", "-q"]
+        argv=["npm", "test"],             # package.json "test": "vitest run"
         timeout_seconds=600,
     ), run)
 
@@ -149,18 +149,18 @@ def test(run) -> QualityCheckResult:
 def lint(run) -> QualityCheckResult:
     return _run(QualityCheckSpec(
         name="lint",
-        area="backend",
+        area="frontend",
         operation="lint",
-        argv=_placeholder("lint"),        # e.g. ["bun", "x", "oxlint@1.36.0", "src"]
+        argv=["npm", "run", "lint"],      # package.json "lint": "eslint ." — flat config in eslint.config.js
     ), run)
 
 
 def typecheck(run) -> QualityCheckResult:
     return _run(QualityCheckSpec(
         name="typecheck",
-        area="backend",
+        area="frontend",
         operation="typecheck",
-        argv=_placeholder("typecheck"),   # e.g. ["bun", "x", "tsc", "--noEmit"]
+        argv=["npx", "tsc", "-b"],        # project refs; every tsconfig sets noEmit, so this is a pure typecheck
     ), run)
 
 
@@ -168,9 +168,9 @@ def build(run) -> QualityCheckResult:
     output_dir = _check_dir(run, "build") / "bundle"
     return _run(QualityCheckSpec(
         name="build",
-        area="backend",
+        area="frontend",
         operation="build",
-        argv=_placeholder("build"),       # e.g. ["bun", "build", "src/index.ts", "--outdir", str(output_dir)]
+        argv=["npm", "run", "build"],     # package.json "build": "tsc -b && vite build" — covers typecheck too
     ), run)
 
 
@@ -219,10 +219,10 @@ def run_quality(run) -> QualityResult:
     builder and let the bounded repair loop decide the run's fate.
     """
     blocks: list[Callable] = [
-        test,
-        lint,
-        typecheck,
-        build,
+        lint,           # npm run lint    -> eslint .
+        typecheck,      # npx tsc -b      -> pure typecheck (noEmit everywhere)
+        test,           # npm test        -> vitest run
+        build,          # npm run build   -> tsc -b && vite build
     ]
     checks = [block(run) for block in blocks]
     # A failure is the command, its exit code, and what it actually printed —

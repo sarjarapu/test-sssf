@@ -1,0 +1,49 @@
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.home__header h1 {
+  margin: 0;
+  font-size: 2.25rem;
+  letter-spacing: 0.05em;
+}
+
+.home__tagline {
+  margin: 0.25rem 0 0;
+  color: var(--text-dim);
+}
+
+.home__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+@media (max-width: 600px) {
+  .home__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home__footer {
+  margin-top: 1rem;
+  border-top: 1px solid var(--surface-2);
+  padding-top: 1rem;
+}
+
+.home__reset {
+  font-size: 0.9rem;
+  background: transparent;
+  border-color: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.home__reset:hover {
+  background: var(--accent);
+  color: #1a1130;
+}
