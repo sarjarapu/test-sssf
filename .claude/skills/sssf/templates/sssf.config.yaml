@@ -1,0 +1,147 @@
+# sssf.config.yaml — the factory's agent roster. One agent, one prompt, one purpose.
+# Runs the real `claude` CLI (coding_agent: claude_code) on first-party subscription auth.
+defaults:
+  coding_agent: claude_code
+  claude_code_auth: subscription   # strip ANTHROPIC_API_KEY so `claude` uses `claude login`
+                                   # (draws the Claude plan window, not per-token Console billing).
+                                   # This is already the default; stated here on purpose.
+                                   # Env override: SSSF_CLAUDE_AUTH.
+  model: claude-sonnet-5           # the workhorse; every agent that omits `model` inherits it.
+                                   # Valid ids: agent_cc._CLAUDE_MODELS (claude-opus-5,
+                                   # claude-sonnet-5, claude-haiku-4-5) or aliases opus|sonnet|haiku.
+  thinking: medium                 # off | minimal | low | medium | high | xhigh | max
+                                   # (7 levels collapse to Claude's 3 effort levels)
+  harness_engineering: []          # ignored under claude_code — reserved for MCP/hooks in v2
+  # Roster-wide tool allowlist; any agent may override with its own list.
+  # Under claude_code a non-empty list is passed as BOTH --allowedTools (pre-approve, no
+  # prompt) AND --tools (drop the schemas of every builtin not listed — the real per-turn
+  # token-bloat cut, ~13k -> ~7k). pi names are translated to Claude names:
+  #   read->Read  write->Write  edit->Edit  bash->Bash  grep->Grep  find->Glob  ls->Read
+  #   subagent_* -> dropped (no Claude equivalent; planner/scout recon runs serially)
+  # Leave `tools` unset entirely to keep Claude's full builtin set (TodoWrite, WebSearch, Task...).
+  tools:
+    - read                         # read file contents
+    - bash                         # execute bash commands
+    - edit                         # find/replace edits
+    - write                        # create/overwrite files
+    - grep                         # search file contents
+    - find                         # find files by glob
+    - ls                           # list directories
+  # Off-limits to every agent that does not name them in its own `writes`.
+  # `tools` alone cannot protect these: bash runs `git checkout`, and write
+  # reaches any path. An agent must not be able to edit the machinery that
+  # decides whether its own work passed. Enforced in adw_modules/permissions.py.
+  #
+  # `writes:` per agent says what it may change IN THE REPO. It never restricts
+  # the session runtime under data_dir — context_handoff/, envelopes, prompts,
+  # raw output. Every agent can always write its own report; `writes: []` means
+  # read-only with respect to the repo, not mute.
+  protected_files:
+    - adws/adw_modules/
+    - adws/adw_sssf_config/
+    - adws/adw_*.py
+  data_dir: adws/adw_data          # runtime home: {data_dir}/sessions/{adw_id}/{agent_name}/
+
+observability:
+  db: adws/adw_data/sssf.db        # tracer writes here directly; the UI polls it
+  poll_ms: 500                     # visualizer live-poll cadence
+
+agents:
+  - name: planner
+    model: claude-opus-5            # the highest-leverage step — a bad plan wastes the pipeline
+    thinking: high
+    color: "#a78bfa"                # optional hex — the agent's lane color in the visualizer
+    purpose: Turn a request into a plan the builder can implement without asking questions.
+    prompt_engineering:
+      system: adws/adw_data/prompt_engineering/planner/system.md
+      user: adws/adw_data/prompt_engineering/planner/user.md
+    # No harness_engineering / subagent_* tools: both are no-ops under claude_code.
+    # Recon runs serially instead of fanning out to sub-agents.
+    writes:                        # the plan is the only thing it may leave in the repo
+      - specs/
+    tools:                         # full recon + write for the plan; no edit — never touches repo files
+      - read
+      - grep
+      - find
+      - ls
+      - bash
+      - write
+
+  - name: builder
+    thinking: high                 # inherits the Sonnet workhorse; just raises effort for the code-writer
+    color: "#22d3ee"
+    purpose: Implement the plan exactly; report every changed file in the envelope.
+    prompt_engineering:
+      system: adws/adw_data/prompt_engineering/builder/system.md
+      user: adws/adw_data/prompt_engineering/builder/user.md
+    # No `writes` key: unrestricted, and the only agent that is. It still cannot
+    # touch defaults.protected_files — the builder does not get to edit its own grader.
+    tools:                         # the only agent that mutates the repo — everything on
+      - read
+      - grep
+      - find
+      - ls
+      - bash
+      - edit
+      - write
+
+  - name: scout
+    model: claude-haiku-4-5         # mechanical "where does X live" recon — cheap and fast
+    thinking: low
+    color: "#fbbf24"
+    purpose: Find and report where things live; change nothing.
+    prompt_engineering:
+      system: adws/adw_data/prompt_engineering/scout/system.md
+      user: adws/adw_data/prompt_engineering/scout/user.md
+    writes: []                     # read-only, and actually read-only: its findings
+                                   # go to context_handoff/, which is runtime, not the repo
+    tools:                         # search-heavy recon; write only so scout_findings.md lands without a bash heredoc
+      - read
+      - grep
+      - find
+      - ls
+      - bash
+      - write
+
+  # No tester agent: running the suite is a known command, so it is a kind="code"
+  # phase over adw_modules/quality.py. See SKILL.md hard rule 8.
+
+  - name: reviewer
+    model: claude-opus-5           # must out-think the builder to catch its mistakes
+    thinking: high
+    color: "#fb7185"
+    purpose: Confirm that what was built is what was asked for; change nothing.
+    prompt_engineering:
+      system: adws/adw_data/prompt_engineering/reviewer/system.md
+      user: adws/adw_data/prompt_engineering/reviewer/user.md
+    writes: []                     # a reviewer that cannot fix cannot quietly fix — the
+                                   # claim the tool list only implied, now enforced
+    tools:                         # full read surface; write only for review.md, no edit
+      - read
+      - grep
+      - find
+      - ls
+      - bash
+      - write
+
+  - name: documenter
+    model: claude-haiku-4-5        # diff -> markdown is rote; Haiku is plenty
+    thinking: minimal
+    color: "#e879f9"
+    purpose: Write up the change that was just made, from the diff; document only.
+    prompt_engineering:
+      system: adws/adw_data/prompt_engineering/documenter/system.md
+      user: adws/adw_data/prompt_engineering/documenter/user.md
+    writes:                        # documentation only — "document only" is a rule now,
+      - app_docs/                  # not a line in a prompt the model may drift from.
+      - docs/                      # Markdown anywhere, because docs live next to the
+      - "**/*.md"                  # code they describe as often as in a docs folder.
+      - "*.md"
+    tools:                         # reads the diff and the code; writes/edits documentation only
+      - read
+      - grep
+      - find
+      - ls
+      - bash
+      - write
+      - edit
