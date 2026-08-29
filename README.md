@@ -3,7 +3,8 @@
 A small, registry-driven game hub built with React + Vite. The home screen lists
 every game from a single registry; each game renders a shared chrome
 (`<GameLayout>`) that provides the back link, restart button, how-to-play panel
-and optional settings dialog. The first game is hot-seat **Tic-Tac-Toe**.
+and optional settings dialog. The arcade ships two games: hot-seat
+**Tic-Tac-Toe** and canvas **Snake**.
 
 ## Local development
 
