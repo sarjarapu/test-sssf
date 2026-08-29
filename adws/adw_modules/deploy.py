@@ -175,6 +175,15 @@ def _ship(run, kind: str, remote: str, branch: str | None, verify: bool,
             returncode=0, sha=sha, detail="pushed; no GitHub remote to poll",
             output_tail="\n".join(lines)[-TAIL_CHARS:]))
 
+    result = _await_and_wrap(repo, sha, environment, command, timeout_seconds, poll_seconds, emit)
+    if not result.output_tail:
+        result.output_tail = "\n".join(lines)[-TAIL_CHARS:]
+    return _finish(run, phase, log, lines, started_at, clock, result)
+
+
+def _await_and_wrap(repo: str, sha: str, environment: str, command: str,
+                    timeout_seconds: int, poll_seconds: int, emit) -> DeployResult:
+    """Poll the Vercel commit status for `sha` and map the outcome to a DeployResult."""
     emit(f"polling {repo}@{sha[:7]} for the {_VERCEL_CONTEXT} status "
          f"(every {poll_seconds}s, up to {timeout_seconds}s)")
     state, target_url, raw = await_vercel(repo, sha, timeout_seconds, poll_seconds, emit)
@@ -188,10 +197,42 @@ def _ship(run, kind: str, remote: str, branch: str | None, verify: bool,
         detail = f"{_VERCEL_CONTEXT} status never posted — timed out after {timeout_seconds}s"
     emit(detail + (f"  {target_url}" if target_url else ""))
 
-    return _finish(run, phase, log, lines, started_at, clock, DeployResult(
+    return DeployResult(
         passed=passed, target="vercel", environment=environment, command=command,
         returncode=0, sha=sha, url=target_url, detail=detail,
-        output_tail=(raw or "\n".join(lines))[-TAIL_CHARS:]))
+        output_tail=raw[-TAIL_CHARS:] if raw else "")
+
+
+def verify_deploy(run, sha: str | None = None, environment: str = "production",
+                  timeout_seconds: int = 600, poll_seconds: int = 10) -> DeployResult:
+    """Poll Vercel's commit status for an already-pushed SHA — no push.
+
+    Used to confirm a release-it commit shipped, and by `adw_release --redeploy`
+    to re-verify the current tag without cutting a new version.
+    """
+    phase = run.phases[-1]
+    out_dir = _artifact_dir(run, "verify")
+    log = out_dir / "verify.log"
+    lines: list[str] = []
+
+    def emit(text: str) -> None:
+        lines.append(text)
+        run.console.note(f"verify: {text}")
+
+    started_at = now_iso()
+    clock = time.monotonic()
+    sha = sha or _git(run, "rev-parse", "HEAD")[1].strip()
+    repo = github_repo(run)
+    if not repo:
+        return _finish(run, phase, log, lines, started_at, clock, DeployResult(
+            passed=False, target="vercel", environment=environment, command="(verify)",
+            sha=sha, detail="no GitHub remote to poll", output_tail=""))
+
+    result = _await_and_wrap(repo, sha, environment, "(verify)",
+                             timeout_seconds, poll_seconds, emit)
+    if not result.output_tail:
+        result.output_tail = "\n".join(lines)[-TAIL_CHARS:]
+    return _finish(run, phase, log, lines, started_at, clock, result)
 
 
 def preview(run, remote: str = "origin", branch: str | None = None, verify: bool = True,
