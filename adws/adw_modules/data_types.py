@@ -172,6 +172,53 @@ class QualityResult(BaseModel):
     artifacts: list[str] = Field(default_factory=list)
 
 
+# ── Deploy (git push -> host build, deterministic) ───────────────────────────
+
+class DeployResult(BaseModel):
+    """Captured evidence from one release: the push, and the host build it triggered.
+
+    Same shape as QualityCheckResult — a command, its exit code, the verbatim
+    tail, an artifact on disk — because a CI step and an agent handoff both need
+    exactly that and nothing else. `url` is the live deployment when the host
+    reported one, else the build inspector; `detail` is a one-line status.
+    """
+
+    passed: bool
+    target: str                      # "vercel"
+    environment: str = ""            # "production" | "preview"
+    command: str = ""                # the push command that triggered the deploy
+    returncode: int = 0
+    sha: str = ""                    # the commit that was deployed
+    url: str = ""                    # live deployment URL, or the build inspector URL
+    detail: str = ""                 # one-line human status ("Vercel: success", "timed out")
+    duration_seconds: float = 0.0
+    output_artifact: str = ""
+    output_tail: str = ""
+
+
+class ReleaseResult(BaseModel):
+    """Captured evidence from one `release-it` run on `main`.
+
+    `release-it` bumps `package.json`, writes `CHANGELOG.md`, commits, tags, and
+    (when a token is present) cuts a GitHub release. This records what it
+    produced so the verify phase can poll the right SHA and the trace names the
+    version that shipped.
+    """
+
+    passed: bool
+    command: str = ""
+    returncode: int = 0
+    version: str = ""                # the new semver, e.g. "0.2.0" (no leading v)
+    tag: str = ""                    # the git tag, e.g. "v0.2.0"
+    sha: str = ""                    # the release commit `release-it` created
+    changelog_path: str = ""         # relative path to the changelog it wrote
+    github_release_url: str = ""     # the GitHub release, when one was created
+    detail: str = ""                 # one-line human status
+    duration_seconds: float = 0.0
+    output_artifact: str = ""
+    output_tail: str = ""
+
+
 # ── Change capture (git diff, deterministic) ─────────────────────────────────
 
 class ChangeCapture(BaseModel):

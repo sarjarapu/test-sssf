@@ -60,6 +60,10 @@ sdlc *ARGS:
 simple-sdlc *ARGS:
     uv run adws/adw_simple_sdlc.py --config {{config}} "$@"
 
+# verify, push, and watch Vercel ship it: just release "cut v0.2.0"
+release *ARGS:
+    uv run adws/adw_release.py --config {{config}} "$@"
+
 # ── watch it ────────────────────────────────────────────────────────────────
 # Reads never block a running workflow, the db is WAL. Poll as hard as you like.
 
