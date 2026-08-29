@@ -115,20 +115,39 @@ def _vercel_status(repo: str, sha: str) -> tuple[str, str, str]:
     return "", "", out.strip()
 
 
+def _deployment_url(repo: str, sha: str) -> str:
+    """The live deployment URL for `sha` from the GitHub deployments API, "" if none.
+
+    The "Vercel" commit status only carries the build-inspector link; the actual
+    `*.vercel.app` URL is the deployment status `environment_url`.
+    """
+    rc, out, _ = _run(
+        ["gh", "api", f"repos/{repo}/deployments?sha={sha}&per_page=1",
+         "--jq", ".[0].id"], timeout=20)
+    dep_id = out.strip()
+    if rc != 0 or not dep_id or dep_id == "null":
+        return ""
+    rc, out, _ = _run(
+        ["gh", "api", f"repos/{repo}/deployments/{dep_id}/statuses?per_page=1",
+         "--jq", ".[0].environment_url // .[0].target_url // \"\""], timeout=20)
+    return out.strip() if rc == 0 and out.strip() != "null" else ""
+
+
 def await_vercel(repo: str, sha: str, timeout_seconds: int = 600, poll_seconds: int = 10,
                  emit=lambda _text: None) -> tuple[str, str, str]:
     """Poll the "Vercel" commit status until it reaches a terminal state or times out.
 
-    Returns (state, target_url, raw_json). `state` is "" when the status was
-    never posted, one of success|failure|error when terminal, else the last
-    non-terminal state seen before the deadline.
+    Returns (state, url, raw_json) — `url` is the live deployment URL when the
+    deployments API has one, else the build-inspector link. `state` is "" when
+    the status was never posted, one of success|failure|error when terminal,
+    else the last non-terminal state seen before the deadline.
     """
     deadline = time.monotonic() + timeout_seconds
     state, target_url, raw = "", "", ""
     while time.monotonic() < deadline:
         state, target_url, raw = _vercel_status(repo, sha)
         if state in _TERMINAL_STATES:
-            return state, target_url, raw
+            return state, _deployment_url(repo, sha) or target_url, raw
         emit(f"{_VERCEL_CONTEXT} {state or 'not posted yet'} — waiting {poll_seconds}s")
         time.sleep(poll_seconds)
     return state, target_url, raw
@@ -175,6 +194,15 @@ def _ship(run, kind: str, remote: str, branch: str | None, verify: bool,
             returncode=0, sha=sha, detail="pushed; no GitHub remote to poll",
             output_tail="\n".join(lines)[-TAIL_CHARS:]))
 
+    result = _await_and_wrap(repo, sha, environment, command, timeout_seconds, poll_seconds, emit)
+    if not result.output_tail:
+        result.output_tail = "\n".join(lines)[-TAIL_CHARS:]
+    return _finish(run, phase, log, lines, started_at, clock, result)
+
+
+def _await_and_wrap(repo: str, sha: str, environment: str, command: str,
+                    timeout_seconds: int, poll_seconds: int, emit) -> DeployResult:
+    """Poll the Vercel commit status for `sha` and map the outcome to a DeployResult."""
     emit(f"polling {repo}@{sha[:7]} for the {_VERCEL_CONTEXT} status "
          f"(every {poll_seconds}s, up to {timeout_seconds}s)")
     state, target_url, raw = await_vercel(repo, sha, timeout_seconds, poll_seconds, emit)
@@ -188,10 +216,42 @@ def _ship(run, kind: str, remote: str, branch: str | None, verify: bool,
         detail = f"{_VERCEL_CONTEXT} status never posted — timed out after {timeout_seconds}s"
     emit(detail + (f"  {target_url}" if target_url else ""))
 
-    return _finish(run, phase, log, lines, started_at, clock, DeployResult(
+    return DeployResult(
         passed=passed, target="vercel", environment=environment, command=command,
         returncode=0, sha=sha, url=target_url, detail=detail,
-        output_tail=(raw or "\n".join(lines))[-TAIL_CHARS:]))
+        output_tail=raw[-TAIL_CHARS:] if raw else "")
+
+
+def verify_deploy(run, sha: str | None = None, environment: str = "production",
+                  timeout_seconds: int = 600, poll_seconds: int = 10) -> DeployResult:
+    """Poll Vercel's commit status for an already-pushed SHA — no push.
+
+    Used to confirm a release-it commit shipped, and by `adw_release --redeploy`
+    to re-verify the current tag without cutting a new version.
+    """
+    phase = run.phases[-1]
+    out_dir = _artifact_dir(run, "verify")
+    log = out_dir / "verify.log"
+    lines: list[str] = []
+
+    def emit(text: str) -> None:
+        lines.append(text)
+        run.console.note(f"verify: {text}")
+
+    started_at = now_iso()
+    clock = time.monotonic()
+    sha = sha or _git(run, "rev-parse", "HEAD")[1].strip()
+    repo = github_repo(run)
+    if not repo:
+        return _finish(run, phase, log, lines, started_at, clock, DeployResult(
+            passed=False, target="vercel", environment=environment, command="(verify)",
+            sha=sha, detail="no GitHub remote to poll", output_tail=""))
+
+    result = _await_and_wrap(repo, sha, environment, "(verify)",
+                             timeout_seconds, poll_seconds, emit)
+    if not result.output_tail:
+        result.output_tail = "\n".join(lines)[-TAIL_CHARS:]
+    return _finish(run, phase, log, lines, started_at, clock, result)
 
 
 def preview(run, remote: str = "origin", branch: str | None = None, verify: bool = True,
