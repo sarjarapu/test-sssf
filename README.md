@@ -7,6 +7,10 @@ and optional settings dialog. The first game is hot-seat **Tic-Tac-Toe**.
 
 ## Local development
 
+System tools this repo assumes (git, Node, uv, just, gh, the `claude` CLI, and
+optionally bun/sqlite3) with macOS + Debian install commands are in
+[`app_docs/prerequisites.md`](app_docs/prerequisites.md).
+
 ```bash
 npm install
 npm run dev      # http://localhost:5173
@@ -71,3 +75,39 @@ extension point.
 Import the repo — Vercel auto-detects the framework as **Vite** (build
 `npm run build`, output `dist`). `vercel.json` adds the SPA rewrite so deep links
 like `/game/tic-tac-toe` resolve to `index.html` instead of 404ing.
+
+The release/preview pipeline (feature branch → preview → production) is
+documented in [`app_docs/releasing.md`](app_docs/releasing.md); the per-feature
+runbook is [`app_docs/adding-a-game.md`](app_docs/adding-a-game.md).
+
+## Observing ADW runs (`just obs`)
+
+The trace UI for the agent workflows (`just plan`, `just sdlc`, `just preview`,
+`just release`, …) is served by **`just obs`** from the repo root:
+
+```bash
+just obs        # API on :4600, UI on http://localhost:4601  (needs bun)
+```
+
+This starts **two** processes — a JSON API over `adws/adw_data/sssf.db` and the
+Vite UI that proxies `/api/*` to it. Running the visualizer's own `npm run dev`
+starts **only the UI**, so every request fails with
+`http proxy error: /api/sessions … ECONNREFUSED` — use `just obs` instead, or
+start the API yourself:
+
+```bash
+cd .claude/skills/sssf/apps/visualizer
+SSSF_DB="$(git rev-parse --show-toplevel)/adws/adw_data/sssf.db" bun run server/index.ts
+```
+
+**If the API exits with `unable to open database file`:** the tracer removes the
+WAL sidecar files (`sssf.db-wal`, `sssf.db-shm`) when the last ADW finishes
+cleanly, and `bun:sqlite` cannot open a WAL db read-only without them. Either run
+`just obs` while a workflow is running, or recreate the sidecars once:
+
+```bash
+bun -e 'new (require("bun:sqlite").Database)("adws/adw_data/sssf.db",{readwrite:true}).close()'
+```
+
+Quick CLI peeks without the UI: `just sessions`, `just phases <adw_id>`,
+`just tail <adw_id>`.
