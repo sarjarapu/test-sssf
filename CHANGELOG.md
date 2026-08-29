@@ -1,5 +1,11 @@
 # Changelog
 
+# [0.3.0](https://github.com/sarjarapu/test-sssf/compare/v0.2.0...v0.3.0) (2026-08-29)
+
+### Features
+
+* add Snake game ([67c66f8](https://github.com/sarjarapu/test-sssf/commit/67c66f81f80fc3784e6036182b4f1a06a692ea5c))
+
 # [0.2.0](https://github.com/sarjarapu/test-sssf/compare/v0.1.0...v0.2.0) (2026-08-29)
 
 ### Features
